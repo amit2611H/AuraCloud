@@ -39,7 +39,7 @@ describe("getPermissionStatus", () => {
         { arn: WATCHED, actions: [], name: "watched-bucket", status: "healthy" },
         { arn: NEVER_REPORTED, actions: [], status: "unscanned" },
       ],
-      { [WATCHED]: { "s3:GetObject": { status: "valid", timestamp: fresh() } } },
+      { [WATCHED]: { "s3:GetObject": { status: "valid", evaluatedAt: fresh(), timestamp: fresh() } } },
     );
 
     const result = await getPermissionStatus(ctx, {});
@@ -62,7 +62,7 @@ describe("getPermissionStatus", () => {
         { arn: WATCHED, actions: [], status: "blocked" },
         { arn: NEVER_REPORTED, actions: [], status: "unscanned" },
       ],
-      { [WATCHED]: { "s3:GetObject": { status: "error", reason: "denied", timestamp: fresh() } } },
+      { [WATCHED]: { "s3:GetObject": { status: "error", reason: "denied", evaluatedAt: fresh(), timestamp: fresh() } } },
     );
 
     const result = await getPermissionStatus(ctx, { arn: WATCHED });
@@ -76,8 +76,8 @@ describe("getPermissionStatus", () => {
   it("drops the camelCase alias the Brain writes beside each canonical action", async () => {
     givenWatched([{ arn: WATCHED, actions: [], status: "healthy" }], {
       [WATCHED]: {
-        "s3:GetObject": { status: "valid", timestamp: fresh() },
-        getObject: { status: "valid", timestamp: fresh() },
+        "s3:GetObject": { status: "valid", evaluatedAt: fresh(), timestamp: fresh() },
+        getObject: { status: "valid", evaluatedAt: fresh(), timestamp: fresh() },
       },
     });
 

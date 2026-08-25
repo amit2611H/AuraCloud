@@ -25,6 +25,7 @@
     "start:mcp-server": "npm run dev -w mcp-server",
     "start:mcp-http": "npm run dev:http -w mcp-server",
     "start:all": "npm run redis:up && npx concurrently -n crawlers,logic,api,mcp,frontend -c blue,magenta,green,yellow,cyan \"npm run dev -w crawlers\" \"npm run dev -w logic\" \"npm run dev -w api-server\" \"npm run dev:http -w mcp-server\" \"npm run dev -w frontend\"",
+    "start:no-crawlers": "npm run redis:up && npx concurrently -n logic,api,mcp,frontend -c magenta,green,yellow,cyan \"npm run dev -w logic\" \"npm run dev -w api-server\" \"npm run dev:http -w mcp-server\" \"npm run dev -w frontend\"",
     "redis:up": "npm run redis:up -w utils"
   },
   "dependencies": {

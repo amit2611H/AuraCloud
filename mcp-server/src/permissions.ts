@@ -5,6 +5,7 @@ interface StoredActionResult {
   status?: string;
   reason?: string | null;
   timestamp?: string;
+  evaluatedAt?: string | null;
   details?: unknown;
 }
 
@@ -146,7 +147,10 @@ export const getPermissionStatus = async (
         status,
         reason: result.reason ?? null,
         ...(filters.includeDetails
-          ? { evaluatedAt: result.timestamp, details: result.details }
+          ? {
+              ...(result.evaluatedAt ? { evaluatedAt: result.evaluatedAt } : {}),
+              details: result.details,
+            }
           : {}),
       });
     }

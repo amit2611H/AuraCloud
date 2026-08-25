@@ -5,6 +5,7 @@ export const STALE_AFTER_MS = 60_000;
 export interface ActionResult {
   status?: string;
   timestamp?: string;
+  evaluatedAt?: string | null;
 }
 
 /** Either a single top-level verdict or one entry per monitored action. */
@@ -16,10 +17,16 @@ const isSingleVerdict = (entry: ArnPermissionEntry): entry is ActionResult =>
 const toActionResults = (entry: ArnPermissionEntry): ActionResult[] =>
   isSingleVerdict(entry) ? [entry] : Object.values(entry);
 
-const isFresh = (result: ActionResult, now: number): boolean => {
-  const evaluatedAt = result.timestamp ? Date.parse(result.timestamp) : NaN;
+export const isFresh = (
+  result: ActionResult | string | undefined | null,
+  now: number = Date.now(),
+): boolean => {
+  if (!result) return false;
+  const timeStr = typeof result === "string" ? result : result.evaluatedAt;
+  if (!timeStr) return false;
+  const time = Date.parse(timeStr);
   // An unparseable timestamp cannot prove freshness, so it counts as stale.
-  return Number.isFinite(evaluatedAt) && now - evaluatedAt <= STALE_AFTER_MS;
+  return Number.isFinite(time) && now - time <= STALE_AFTER_MS;
 };
 
 export const resolveResourceStatus = (

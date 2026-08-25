@@ -35,7 +35,7 @@ beforeEach(() => {
     leanExec({
       name: "dev",
       userId: "AIDAEXAMPLE",
-      permissionsData: { [WATCHED]: { "s3:GetObject": { status: "valid", timestamp: fresh() } } },
+      permissionsData: { [WATCHED]: { "s3:GetObject": { status: "valid", evaluatedAt: fresh(), timestamp: fresh() } } },
     }),
   );
   catalogueFind.mockReturnValue(leanExec([{ arn: WATCHED, name: "watched-bucket-display" }]));
@@ -64,7 +64,7 @@ describe("getWatchedResources", () => {
         name: "dev",
         userId: "AIDAEXAMPLE",
         permissionsData: {
-          "arn:aws:s3:::unwatched": { "s3:GetObject": { status: "error", timestamp: fresh() } },
+          "arn:aws:s3:::unwatched": { "s3:GetObject": { status: "error", evaluatedAt: fresh(), timestamp: fresh() } },
         },
       }),
     );

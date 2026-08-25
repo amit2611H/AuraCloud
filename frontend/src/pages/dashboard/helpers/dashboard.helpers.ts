@@ -22,9 +22,9 @@ export const isTopLevelArnData = (
 
 /** Returns the ISO timestamp from the first available entry in the ARN data. */
 export const getTimestampFromArnData = (data: ArnPermissionData): string => {
-  if (isTopLevelArnData(data)) return data.timestamp;
+  if (isTopLevelArnData(data)) return data.evaluatedAt ?? "";
   const firstAction = Object.values(data as Record<string, ActionData>)[0];
-  return firstAction?.timestamp ?? "";
+  return firstAction?.evaluatedAt ?? "";
 };
 
 

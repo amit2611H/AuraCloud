@@ -6,6 +6,7 @@ import {
   getRedisClient,
   getResourceField,
   getResourceTypeFromArn,
+  isFresh,
   UserResourceWatchlistModel,
   type EvaluationResult,
   type RedisClientType,
@@ -16,8 +17,8 @@ import { DomainError, assertWatchableArn, unknownActionWarnings } from "./watchl
 export interface TheoreticalPermissionResult {
   arn: string;
   action: string;
-  /** Same vocabulary as get_permission_status: 'valid' = allowed, 'error' = blocked. */
-  status: "valid" | "error";
+  /** Same vocabulary as get_permission_status: 'valid' = allowed, 'error' = blocked, 'stale' = stale. */
+  status: "valid" | "error" | "stale";
   allowed: boolean;
   reason: string;
   /** Whether this resource is also on the user's watchlist (see get_permission_status). */
@@ -97,15 +98,36 @@ export const checkTheoreticalPermission = async (
 
   const watched = await isArnWatched(ctx, arn);
 
+  const rawEvaluatedAt = parsedData?.updated_at ?? parsedData?.updatedAt;
+  const evaluatedAt = typeof rawEvaluatedAt === "string" ? rawEvaluatedAt : new Date().toISOString();
+  const fresh = typeof rawEvaluatedAt === "string" && isFresh(rawEvaluatedAt);
+
+  const status: "valid" | "error" | "stale" = fresh
+    ? (result.allowed ? "valid" : "error")
+    : "stale";
+
+  const allWarnings = [...warnings];
+  if (!fresh) {
+    if (!rawEvaluatedAt) {
+      allWarnings.push(
+        "Resource data has not been synced by crawlers yet — evaluated without resource-specific policies.",
+      );
+    } else {
+      allWarnings.push(
+        `Crawled resource data is stale (last synced at ${rawEvaluatedAt}).`,
+      );
+    }
+  }
+
   return {
     arn,
     action,
-    status: result.allowed ? "valid" : "error",
+    status,
     allowed: result.allowed,
     reason: result.reason,
     watched,
-    evaluatedAt: new Date().toISOString(),
-    ...(warnings.length > 0 ? { warnings } : {}),
+    evaluatedAt,
+    ...(allWarnings.length > 0 ? { warnings: allWarnings } : {}),
     ...(includeDetails ? { details: { context: result.context, steps: result.steps } } : {}),
   };
 };

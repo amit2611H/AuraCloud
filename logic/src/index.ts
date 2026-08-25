@@ -31,22 +31,20 @@ async function main() {
         if (!findings) continue
 
         for (const resEntry of findings.resources) {
-          const arn = Object.keys(resEntry)[0];
-          if (!arn) continue;
-          const actionResults = resEntry[arn];
-          if (!actionResults) continue;
+          const { arn, actionResults, evaluatedAt: resourceEvaluatedAt } = resEntry;
+          if (!arn || !actionResults) continue;
 
           permissionsData[arn] = {};
           for (const actionObj of actionResults) {
             const actionName = Object.keys(actionObj)[0];
             if (!actionName) continue;
-            const result = actionObj[actionName];
+            const evalRes = actionObj[actionName] as any;
 
-            const evalRes = result as any;
             const actionStatus = {
               status: evalRes.allowed ? 'valid' : 'error',
               reason: evalRes.allowed ? null : evalRes.reason,
-              timestamp: evalRes.evaluatedAt ?? timestamp,
+              timestamp,
+              evaluatedAt: resourceEvaluatedAt,
               details: {
                 context: evalRes.context,
                 steps: evalRes.steps,

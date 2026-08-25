@@ -39,6 +39,7 @@ export interface ActionData {
   status: PermissionStatus;
   reason: string | null;
   timestamp: string;
+  evaluatedAt?: string | null;
 }
 
 export type ArnPermissionData = ActionData | Record<string, ActionData>;

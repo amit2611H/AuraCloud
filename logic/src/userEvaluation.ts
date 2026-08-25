@@ -25,7 +25,8 @@ export async function evaluateUser(user: UserResourceWatchlist, redis: RedisClie
     const parsedData = resourceData ? attemptDeepParse(resourceData) : null;
     const results = await evaluateResourceActions(resource.arn, resource.actions, evalUser, parsedData);
     const actionResults = resource.actions.map((action) => ({ [action]: results[action] }));
-    return { [resource.arn]: actionResults, evaluatedAt: parsedData?.updatedAt ?? null };
+    const evaluatedAt = parsedData?.updated_at ?? parsedData?.updatedAt ?? null;
+    return { arn: resource.arn, actionResults, evaluatedAt };
   });
 
   return { userId: user.userId, resources: await Promise.all(resources) };
