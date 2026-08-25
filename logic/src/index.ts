@@ -46,7 +46,7 @@ async function main() {
             const actionStatus = {
               status: evalRes.allowed ? 'valid' : 'error',
               reason: evalRes.allowed ? null : evalRes.reason,
-              timestamp,
+              timestamp: evalRes.evaluatedAt ?? timestamp,
               details: {
                 context: evalRes.context,
                 steps: evalRes.steps,

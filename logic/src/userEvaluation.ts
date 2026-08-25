@@ -1,6 +1,9 @@
 import {
+  attemptDeepParse,
   buildEvaluationSubject,
   evaluateResourceActions,
+  getResourceField,
+  getResourceTypeFromArn,
   type RedisClientType,
   type UserResourceWatchlist,
 } from 'utils';
@@ -17,9 +20,12 @@ export async function evaluateUser(user: UserResourceWatchlist, redis: RedisClie
   }
 
   const resources = user.resources.map(async (resource) => {
-    const results = await evaluateResourceActions(redis, resource.arn, resource.actions, evalUser);
+    const resourceType = getResourceTypeFromArn(resource.arn);
+    const resourceData = await getResourceField(redis, resourceType, resource.arn);
+    const parsedData = resourceData ? attemptDeepParse(resourceData) : null;
+    const results = await evaluateResourceActions(resource.arn, resource.actions, evalUser, parsedData);
     const actionResults = resource.actions.map((action) => ({ [action]: results[action] }));
-    return { [resource.arn]: actionResults };
+    return { [resource.arn]: actionResults, evaluatedAt: parsedData?.updatedAt ?? null };
   });
 
   return { userId: user.userId, resources: await Promise.all(resources) };

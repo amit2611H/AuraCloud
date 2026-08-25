@@ -116,8 +116,9 @@ export class EC2Crawler extends BaseCrawler {
     }
     
     async save(redis: any, data: EnrichedInstance[]) {
+        const updatedAt = new Date().toISOString();
         for (const instance of data) {
-            await redis.hSet("aura:resource:ec2instances", instance.arn, JSON.stringify(instance));
+            await redis.hSet("aura:resource:ec2instances", instance.arn, JSON.stringify({ ...instance, updated_at: updatedAt }));
         }
     }
 }

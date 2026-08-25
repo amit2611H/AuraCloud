@@ -141,8 +141,9 @@ export class BasicIamCrawler extends BaseCrawler {
     }
 
     async save(redis: any, data: any) {
-        for (const user of data.users) await redis.hSet("aura:iam:users", user.UserId, JSON.stringify(user));
-        for (const role of data.roles) await redis.hSet("aura:iam:roles", role.RoleName, JSON.stringify(role));
-        for (const group of data.groups) await redis.hSet("aura:iam:groups", group.GroupName, JSON.stringify(group));
+        const updatedAt = new Date().toISOString();
+        for (const user of data.users) await redis.hSet("aura:iam:users", user.UserId, JSON.stringify({ ...user, updated_at: updatedAt }));
+        for (const role of data.roles) await redis.hSet("aura:iam:roles", role.RoleName, JSON.stringify({ ...role, updated_at: updatedAt }));
+        for (const group of data.groups) await redis.hSet("aura:iam:groups", group.GroupName, JSON.stringify({ ...group, updated_at: updatedAt }));
     }
 }

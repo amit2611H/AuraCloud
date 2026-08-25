@@ -118,6 +118,10 @@ export class S3Crawler extends BaseCrawler {
     }
     
     async save(redis: any, data: any) {
-        for (const bucket of data) await redis.hSet("aura:resource:s3buckets", bucket.BucketArn, JSON.stringify(bucket));
+        const updatedAt = new Date().toISOString();
+        for (const bucket of data) {
+            const key = bucket.BucketArn || bucket.arn || `arn:aws:s3:::${bucket.Name}`;
+            await redis.hSet("aura:resource:s3buckets", key, JSON.stringify({ ...bucket, updated_at: updatedAt }));
+        }
     }
 }

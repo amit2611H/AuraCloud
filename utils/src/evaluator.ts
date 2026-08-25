@@ -311,16 +311,13 @@ export function getResourceField(
  * fetch/parse/evaluate contract in one place so the two can never diverge.
  */
 export async function evaluateResourceActions(
-  redis: RedisClientType,
   arn: string,
   actions: string[],
   subject: Record<string, unknown>,
+  parsedData: Record<string, unknown> | null,
 ): Promise<Record<string, EvaluationResult>> {
-  const resourceType = getResourceTypeFromArn(arn);
-  const resourceData = await getResourceField(redis, resourceType, arn);
-  const parsedData = resourceData ? attemptDeepParse(resourceData) : null;
   const resourceObj = parsedData && typeof parsedData === 'object' ? { arn, ...parsedData } : { arn };
   return Object.fromEntries(
-    actions.map((action) => [action, evaluate(resourceObj, action, subject)]),
+    actions.map((action) => [action, evaluate(resourceObj, action, subject)])
   );
 }

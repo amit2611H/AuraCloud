@@ -13,6 +13,7 @@ export type StoredIamPolicy = {
   PolicyName?: string | undefined;
   Document: Record<string, unknown>;
   lastSyncedAt: string;
+  updated_at?: string;
 };
 
 type PendingPolicy = { arn: string; name?: string | undefined };
@@ -121,8 +122,9 @@ export class IAMPoliciesCrawler extends BaseCrawler {
   }
 
   async save(redis: any, data: StoredIamPolicy[]) {
+    const updatedAt = new Date().toISOString();
     for (const policy of data) {
-      await redis.hSet('aura:iam:policies', policy.PolicyArn, JSON.stringify(policy));
+      await redis.hSet('aura:iam:policies', policy.PolicyArn, JSON.stringify({ ...policy, updated_at: updatedAt }));
     }
   }
 }

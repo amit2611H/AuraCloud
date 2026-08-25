@@ -162,10 +162,11 @@ export class PermissionSetsCrawler extends BaseCrawler {
   }
 
   async save(redis: any, data: any[]) {
+    const updatedAt = new Date().toISOString();
     for (const ps of data) {
       const arn = ps?.PermissionSetArn;
       if (!arn) continue;
-      await redis.hSet("aura:sso:permission-sets", arn, JSON.stringify(ps));
+      await redis.hSet("aura:sso:permission-sets", arn, JSON.stringify({ ...ps, updated_at: updatedAt }));
     }
   }
 }

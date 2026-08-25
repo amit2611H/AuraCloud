@@ -1,8 +1,11 @@
 import {
+  attemptDeepParse,
   buildEvaluationSubject,
   disconnectRedis,
   evaluateResourceActions,
   getRedisClient,
+  getResourceField,
+  getResourceTypeFromArn,
   UserResourceWatchlistModel,
   type EvaluationResult,
   type RedisClientType,
@@ -85,8 +88,11 @@ export const checkTheoreticalPermission = async (
       `No crawled identity data for your linked AWS user (${ctx.linkedAwsUserId}). The evaluator covers SSO and IAM users the crawlers have synced — freshly linked users appear after the next crawl cycle.`,
     );
   }
+  const resourceType = getResourceTypeFromArn(arn);
+  const resourceData = await getResourceField(redis, resourceType, arn);
+  const parsedData = resourceData ? attemptDeepParse(resourceData) : null;
 
-  const results = await evaluateResourceActions(redis, arn, [action], subject);
+  const results = await evaluateResourceActions(arn, [action], subject, parsedData);
   const result = results[action]!;
 
   const watched = await isArnWatched(ctx, arn);

@@ -123,7 +123,8 @@ export class SsoCrawler extends BaseCrawler {
     }
 
     async save(redis: any, data: any) {
-        for (const user of data.users) await redis.hSet("aura:sso:users", user.UserId, JSON.stringify(user));
-        for (const group of data.groups) await redis.hSet("aura:sso:groups", group.GroupId, JSON.stringify(group));
+        const updatedAt = new Date().toISOString();
+        for (const user of data.users) await redis.hSet("aura:sso:users", user.UserId, JSON.stringify({ ...user, updated_at: updatedAt }));
+        for (const group of data.groups) await redis.hSet("aura:sso:groups", group.GroupId, JSON.stringify({ ...group, updated_at: updatedAt }));
     }
 }
