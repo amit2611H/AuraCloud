@@ -9,6 +9,7 @@ import {
   isFresh,
   UserResourceWatchlistModel,
   type EvaluationResult,
+  type PolicyOrigin,
   type RedisClientType,
 } from "utils";
 import type { UserContext } from "./identity.js";
@@ -21,11 +22,16 @@ export interface TheoreticalPermissionResult {
   status: "valid" | "error" | "stale";
   allowed: boolean;
   reason: string;
+  origin?: PolicyOrigin;
   /** Whether this resource is also on the user's watchlist (see get_permission_status). */
   watched: boolean;
   evaluatedAt: string;
   warnings?: string[];
-  details?: { context: EvaluationResult["context"]; steps: EvaluationResult["steps"] };
+  details?: {
+    context: EvaluationResult["context"];
+    steps: EvaluationResult["steps"];
+    origin?: PolicyOrigin;
+  };
 }
 
 const crawlerCache = async (): Promise<RedisClientType> => {
@@ -125,9 +131,18 @@ export const checkTheoreticalPermission = async (
     status,
     allowed: result.allowed,
     reason: result.reason,
+    ...(result.origin ? { origin: result.origin } : {}),
     watched,
     evaluatedAt,
     ...(allWarnings.length > 0 ? { warnings: allWarnings } : {}),
-    ...(includeDetails ? { details: { context: result.context, steps: result.steps } } : {}),
+    ...(includeDetails
+      ? {
+          details: {
+            context: result.context,
+            steps: result.steps,
+            ...(result.origin ? { origin: result.origin } : {}),
+          },
+        }
+      : {}),
   };
 };

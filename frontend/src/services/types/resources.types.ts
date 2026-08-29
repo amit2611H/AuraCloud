@@ -35,9 +35,22 @@ export type PermissionStatus = 'valid' | 'error';
 
 export type ResourceStatus = 'healthy' | 'blocked' | 'stale' | 'unscanned';
 
+export type PolicySourceType = 'identity' | 'group' | 'role' | 'resource' | 'scp';
+
+export interface PolicyOrigin {
+  sourceType: PolicySourceType;
+  policyName?: string;
+  policyArn?: string;
+  sid?: string;
+  groupName?: string;
+  permissionSetName?: string;
+  roleName?: string;
+}
+
 export interface ActionData {
   status: PermissionStatus;
   reason: string | null;
+  origin?: PolicyOrigin | null;
   timestamp: string;
   evaluatedAt?: string | null;
 }

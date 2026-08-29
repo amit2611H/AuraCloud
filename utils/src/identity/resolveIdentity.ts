@@ -69,7 +69,11 @@ async function resolveSsoIdentity(
   if (!ssoUserData) return null;
 
   const resolvedPermissionSets = (ssoUserData.resolvedPermissionSets ?? []) as Record<string, unknown>[];
-  const policies = await resolvePolicies(redis, policyRefsFromPermissionSets(resolvedPermissionSets));
+  const resolvedGroups = (ssoUserData.resolvedGroups ?? []) as Record<string, unknown>[];
+  const policies = await resolvePolicies(
+    redis,
+    policyRefsFromPermissionSets(resolvedPermissionSets, resolvedGroups),
+  );
   const accessibleAwsAccountIds = collectAccessibleAwsAccountIds(ssoUserData);
 
   const primaryEvaluationAccountId = accessibleAwsAccountIds[0] ?? '';

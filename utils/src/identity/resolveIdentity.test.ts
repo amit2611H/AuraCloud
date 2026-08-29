@@ -50,8 +50,25 @@ describe("buildEvaluationSubject", () => {
     expect(subject?.identityType).toBe("SSO");
     expect(subject?.accountId).toBe("111");
     expect(subject?.policies).toEqual([
-      { Statement: [{ Effect: "Allow", Action: "s3:GetObject" }] },
-      { Statement: [{ Effect: "Allow", Action: "s3:Get*" }] },
+      {
+        PolicyName: "InlinePolicy",
+        Statement: [{ Effect: "Allow", Action: "s3:GetObject" }],
+        origin: {
+          sourceType: "role",
+          permissionSetName: "Dev",
+          policyName: "InlinePolicy",
+        },
+      },
+      {
+        PolicyName: "AmazonS3ReadOnlyAccess",
+        Statement: [{ Effect: "Allow", Action: "s3:Get*" }],
+        origin: {
+          sourceType: "role",
+          permissionSetName: "Dev",
+          policyArn: "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+          policyName: "AmazonS3ReadOnlyAccess",
+        },
+      },
     ]);
   });
 
@@ -88,9 +105,33 @@ describe("buildEvaluationSubject", () => {
     expect(subject?.identityType).toBe("IAM");
     expect(subject?.awsUserId).toBe("AIDAIAM1");
     expect(subject?.policies).toEqual([
-      { Statement: [{ Effect: "Allow", Action: "s3:ListBucket" }] },
-      { Statement: [{ Effect: "Allow", Action: "s3:Get*" }] },
-      { Statement: [{ Effect: "Allow", Action: "ec2:Describe*" }] },
+      {
+        PolicyName: "InlinePolicy",
+        Statement: [{ Effect: "Allow", Action: "s3:ListBucket" }],
+        origin: {
+          sourceType: "identity",
+          policyName: "InlinePolicy",
+        },
+      },
+      {
+        PolicyName: "AmazonS3ReadOnlyAccess",
+        Statement: [{ Effect: "Allow", Action: "s3:Get*" }],
+        origin: {
+          sourceType: "identity",
+          policyArn: "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+          policyName: "AmazonS3ReadOnlyAccess",
+        },
+      },
+      {
+        PolicyName: "TeamPolicy",
+        Statement: [{ Effect: "Allow", Action: "ec2:Describe*" }],
+        origin: {
+          sourceType: "group",
+          groupName: "Developers",
+          policyArn: "arn:aws:iam::222:policy/TeamPolicy",
+          policyName: "TeamPolicy",
+        },
+      },
     ]);
   });
 

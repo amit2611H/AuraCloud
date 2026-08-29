@@ -1,5 +1,6 @@
 import type { RedisClientType } from 'redis';
 import { attemptDeepParse, getResourceTypeFromArn } from './utils.js';
+import type { PolicyOrigin } from './identity/types.js';
 
 export type EvalResult = 'ALLOW' | 'DENY' | 'IMPLICIT_DENY';
 
@@ -30,12 +31,14 @@ function resolveIdentityAwsAccountPool(user: Record<string, unknown>): string[] 
 export interface PolicyCheckResult {
   status: EvalResult;
   matchedStatement?: any;
-  reason?: string;
+  reason?: string | undefined;
+  origin?: PolicyOrigin | undefined;
 }
 
 export interface EvaluationResult {
   allowed: boolean;
   reason: string;
+  origin?: PolicyOrigin | undefined;
   context: Record<string, unknown>;
   steps: {
     scp: PolicyCheckResult;
@@ -74,33 +77,43 @@ export function evaluate(resource: unknown, action: string, user: Record<string,
 
     let allowed = false;
     let reason = '';
+    let origin: PolicyOrigin | undefined = undefined;
 
     if (idResult.status === 'DENY') {
       allowed = false;
       reason = idResult.reason || 'Explicit Deny in Identity Policy';
+      origin = idResult.origin;
     } else if (resResult.status === 'DENY') {
       allowed = false;
       reason = resResult.reason || 'Explicit Deny in Resource Policy';
+      origin = resResult.origin;
     } else {
       const identityAllowed = idResult.status === 'ALLOW';
       const resourceAllowed = resResult.status === 'ALLOW';
 
       if (!treatAsSameAccount) {
         allowed = identityAllowed && resourceAllowed;
-        reason = allowed 
-          ? 'Allowed by both Identity Policy and Resource Policy (Cross-Account)' 
-          : `Denied (Cross-Account): Identity Allowed: ${identityAllowed}, Resource Allowed: ${resourceAllowed}`;
+        if (allowed) {
+          reason = 'Allowed by both Identity Policy and Resource Policy (Cross-Account)';
+          origin = idResult.origin || resResult.origin;
+        } else {
+          reason = `Denied (Cross-Account): Identity (user/group/role) Allowed: ${identityAllowed}, Resource Policy Allowed: ${resourceAllowed}`;
+        }
       } else {
         allowed = identityAllowed || resourceAllowed;
-        reason = allowed 
-          ? `Allowed (Same-Account): Identity Allowed: ${identityAllowed}, Resource Allowed: ${resourceAllowed}`
-          : 'Denied: No matching Allow statement found in either Identity or Resource policies';
+        if (allowed) {
+          reason = `Allowed (Same-Account): Identity Allowed: ${identityAllowed}, Resource Allowed: ${resourceAllowed}`;
+          origin = (identityAllowed ? idResult.origin : resResult.origin) || idResult.origin || resResult.origin;
+        } else {
+          reason = 'Denied: No matching Allow statement found in identity policies (user, group, or role) or resource policy';
+        }
       }
     }
 
     return {
       allowed,
       reason,
+      ...(origin ? { origin } : {}),
       context,
       steps: {
         scp: scpResult,
@@ -200,38 +213,77 @@ function checkIdentityPolicy(
 ): PolicyCheckResult {
     let hasAllow = false;
     let allowedStatement: any = null;
+    let allowedOrigin: PolicyOrigin | undefined = undefined;
+
     if (!policies?.length) {
       return { status: 'IMPLICIT_DENY', reason: 'No identity policies attached' };
     }
 
     for (const policy of policies) {
         if (!policy || typeof policy !== 'object') continue;
-        const p = policy as { Statement?: unknown; Name?: string; PolicyName?: string };
-        const policyName = p.PolicyName || p.Name || 'InlinePolicy';
-        const statements = Array.isArray(p.Statement) ? p.Statement : [p.Statement];
+        const p = policy as {
+          Statement?: unknown;
+          Name?: string;
+          PolicyName?: string;
+          origin?: PolicyOrigin;
+          document?: { Statement?: unknown; Name?: string; PolicyName?: string };
+        };
+        const doc = (p.document && typeof p.document === 'object' ? p.document : p) as {
+          Statement?: unknown;
+          Name?: string;
+          PolicyName?: string;
+        };
+        const baseOrigin: PolicyOrigin = p.origin ?? {
+          sourceType: 'identity',
+          policyName: doc.PolicyName || doc.Name || 'InlinePolicy',
+        };
+        const policyName = baseOrigin.policyName || doc.PolicyName || doc.Name || 'InlinePolicy';
+        const statements = Array.isArray(doc.Statement) ? doc.Statement : [doc.Statement];
+
         for (const stmt of statements) {
             if (!stmt || typeof stmt !== 'object') continue;
             const s = stmt as { Action?: unknown; Effect?: unknown; Condition?: unknown; Sid?: string; Resource?: unknown };
             if (matchesAny((s.Action as string | string[]) ?? '', action)) {
                 if (s.Resource && !matchesResource(s.Resource, resourceArn)) continue;
                 if (s.Condition && !matchesCondition(s.Condition, context)) continue;
+
+                const stmtOrigin: PolicyOrigin = {
+                  ...baseOrigin,
+                  ...(s.Sid ? { sid: s.Sid } : {}),
+                };
+
                 if (s.Effect === 'Deny') {
+                    let reason = '';
+                    if (stmtOrigin.sourceType === 'group' && stmtOrigin.groupName) {
+                      if (stmtOrigin.permissionSetName) {
+                        reason = `Explicit Deny in SSO group "${stmtOrigin.groupName}" (Permission Set: "${stmtOrigin.permissionSetName}", Policy: "${policyName}", Sid: ${s.Sid || 'Unnamed'})`;
+                      } else {
+                        reason = `Explicit Deny in group "${stmtOrigin.groupName}" policy "${policyName}" (Sid: ${s.Sid || 'Unnamed'})`;
+                      }
+                    } else if (stmtOrigin.sourceType === 'role' && stmtOrigin.permissionSetName) {
+                      reason = `Explicit Deny in SSO role/permission set "${stmtOrigin.permissionSetName}" policy "${policyName}" (Sid: ${s.Sid || 'Unnamed'})`;
+                    } else {
+                      reason = `Explicit Deny in user identity policy "${policyName}" (Sid: ${s.Sid || 'Unnamed'})`;
+                    }
+
                     return { 
                       status: 'DENY', 
                       matchedStatement: s, 
-                      reason: `Explicit Deny in identity policy "${policyName}" (Sid: ${s.Sid || 'Unnamed'})` 
+                      origin: stmtOrigin,
+                      reason,
                     };
                 }
                 if (s.Effect === 'Allow') {
                     hasAllow = true;
                     allowedStatement = s;
+                    allowedOrigin = stmtOrigin;
                 }
             }
         }
     }
 
     if (hasAllow) {
-        return { status: 'ALLOW', matchedStatement: allowedStatement };
+        return { status: 'ALLOW', matchedStatement: allowedStatement, origin: allowedOrigin };
     }
     return { status: 'IMPLICIT_DENY', reason: 'No matching Allow statement in identity policies' };
 }
@@ -248,6 +300,8 @@ export function checkResourcePolicy(
 
   let hasAllow = false;
   let allowedStatement: any = null;
+  let allowedOrigin: PolicyOrigin | undefined = undefined;
+
   try {
     const parsed = typeof policy === 'string' ? JSON.parse(policy) : policy;
     if (!parsed || typeof parsed !== 'object') {
@@ -262,16 +316,24 @@ export function checkResourcePolicy(
       if (!principalMatches(s.Principal, userArn)) continue;
       if (matchesAny((s.Action as string | string[]) ?? '', action)) {
         if (s.Condition && !matchesCondition(s.Condition, context)) continue;
+
+        const stmtOrigin: PolicyOrigin = {
+          sourceType: 'resource',
+          ...(s.Sid ? { sid: s.Sid } : {}),
+        };
+
         if (s.Effect === 'Deny') {
           return {
             status: 'DENY',
             matchedStatement: s,
-            reason: `Explicit Deny in resource policy (Sid: ${s.Sid || 'Unnamed'})`
+            origin: stmtOrigin,
+            reason: `Explicit Deny in resource policy (Sid: ${s.Sid || 'Unnamed'})`,
           };
         }
         if (s.Effect === 'Allow') {
           hasAllow = true;
           allowedStatement = s;
+          allowedOrigin = stmtOrigin;
         }
       }
     }
@@ -280,7 +342,7 @@ export function checkResourcePolicy(
   }
 
   if (hasAllow) {
-    return { status: 'ALLOW', matchedStatement: allowedStatement };
+    return { status: 'ALLOW', matchedStatement: allowedStatement, origin: allowedOrigin };
   }
   return { status: 'IMPLICIT_DENY', reason: 'No matching Allow statement in resource policy' };
 }

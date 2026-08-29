@@ -1,9 +1,10 @@
-import { getWatchedResources, type ResourceStatus } from "utils";
+import { getWatchedResources, type ResourceStatus, type PolicyOrigin } from "utils";
 import type { UserContext } from "./identity.js";
 
 interface StoredActionResult {
   status?: string;
   reason?: string | null;
+  origin?: PolicyOrigin | null;
   timestamp?: string;
   evaluatedAt?: string | null;
   details?: unknown;
@@ -20,6 +21,7 @@ export interface ActionStatusView {
   action: string;
   status: string;
   reason: string | null;
+  origin?: PolicyOrigin | null;
   evaluatedAt?: string;
   details?: unknown;
 }
@@ -146,6 +148,7 @@ export const getPermissionStatus = async (
         action: actionName,
         status,
         reason: result.reason ?? null,
+        ...(result.origin ? { origin: result.origin } : {}),
         ...(filters.includeDetails
           ? {
               ...(result.evaluatedAt ? { evaluatedAt: result.evaluatedAt } : {}),
