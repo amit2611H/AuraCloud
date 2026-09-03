@@ -7,15 +7,22 @@ export type SlackBlock = Record<string, unknown>;
 
 export type Verdict = "valid" | "error";
 
-export interface PermissionChange {
-  arn: string;
-  name?: string;
+export interface ActionTransition {
   action: string;
   oldStatus: Verdict;
   newStatus: Verdict;
   reason?: string | null;
+}
+
+/** All the changes of ONE resource — rendered as a single Slack message. */
+export interface ResourceChangeAlert {
+  arn: string;
+  name?: string;
+  changes: ActionTransition[];
   at: Date;
 }
+
+const MAX_ALERT_LINES = 20;
 
 const verdictLabel = (verdict: Verdict): string => (verdict === "valid" ? "ALLOWED" : "DENIED");
 
@@ -57,11 +64,22 @@ export const sendSlackDM = async (
 export const sendPermissionChangeAlert = async (
   slackUserId: string,
   recipientName: string,
-  change: PermissionChange,
+  alert: ResourceChangeAlert,
 ): Promise<boolean> => {
-  const resourceLabel = change.name ? `${change.name}\n\`${change.arn}\`` : `\`${change.arn}\``;
-  const transition = `${verdictLabel(change.oldStatus)} ➡️ ${verdictLabel(change.newStatus)}`;
-  const text = `AuraCloud alert: ${change.action} on ${change.name ?? change.arn} changed ${transition}`;
+  const resourceLabel = alert.name ? `*${alert.name}*\n\`${alert.arn}\`` : `\`${alert.arn}\``;
+  const deniedCount = alert.changes.filter((change) => change.newStatus === "error").length;
+  const allowedCount = alert.changes.length - deniedCount;
+
+  const changeLines = alert.changes.slice(0, MAX_ALERT_LINES).map((change) => {
+    const emoji = change.newStatus === "error" ? "⛔" : "✅";
+    const line = `${emoji} \`${change.action}\`  ${verdictLabel(change.oldStatus)} ➡️ ${verdictLabel(change.newStatus)}`;
+    return change.reason ? `${line}\n        ↳ _${change.reason}_` : line;
+  });
+  if (alert.changes.length > MAX_ALERT_LINES) {
+    changeLines.push(`…and ${alert.changes.length - MAX_ALERT_LINES} more`);
+  }
+
+  const text = `AuraCloud alert: ${alert.changes.length} permission change(s) on ${alert.name ?? alert.arn}`;
 
   const blocks: SlackBlock[] = [
     {
@@ -74,19 +92,24 @@ export const sendPermissionChangeAlert = async (
     },
     {
       type: "section",
-      fields: [
-        { type: "mrkdwn", text: `*Resource:*\n${resourceLabel}` },
-        { type: "mrkdwn", text: `*Action:*\n\`${change.action}\`` },
-        { type: "mrkdwn", text: `*Change:*\n${transition}` },
-        { type: "mrkdwn", text: `*When:*\n${change.at.toISOString()}` },
-      ],
+      text: {
+        type: "mrkdwn",
+        text: `${resourceLabel}\n*${alert.changes.length}* action${alert.changes.length === 1 ? "" : "s"} changed — ${deniedCount} now denied, ${allowedCount} now allowed`,
+      },
     },
-    ...(change.reason
-      ? [{ type: "section", text: { type: "mrkdwn", text: `*Reason:* ${change.reason}` } }]
-      : []),
+    { type: "divider" },
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: changeLines.join("\n") },
+    },
     {
       type: "context",
-      elements: [{ type: "mrkdwn", text: "Alerts cover watchlist resources only — AuraCloud" }],
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `${alert.at.toISOString()} — alerts cover watchlist resources only — AuraCloud`,
+        },
+      ],
     },
   ];
 

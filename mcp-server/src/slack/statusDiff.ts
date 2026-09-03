@@ -77,3 +77,23 @@ export const diffWatchedStatuses = (
 
   return { changes, snapshot };
 };
+
+export interface ResourceChanges {
+  arn: string;
+  name?: string;
+  changes: WatchedActionChange[];
+}
+
+/** One group per resource, in first-seen order — the worker sends one message each. */
+export const groupByResource = (changes: WatchedActionChange[]): ResourceChanges[] => {
+  const groups = new Map<string, ResourceChanges>();
+  for (const change of changes) {
+    let group = groups.get(change.arn);
+    if (!group) {
+      group = { arn: change.arn, ...(change.name ? { name: change.name } : {}), changes: [] };
+      groups.set(change.arn, group);
+    }
+    group.changes.push(change);
+  }
+  return [...groups.values()];
+};

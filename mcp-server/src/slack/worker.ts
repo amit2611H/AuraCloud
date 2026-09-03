@@ -8,7 +8,7 @@ import { connectMongo, getWatchedResources } from "utils";
 import { createShutdown } from "../shutdown.js";
 import { sendPermissionChangeAlert } from "./slack.js";
 import { sendDailySummaries, usersWithSlack } from "./summaries.js";
-import { diffWatchedStatuses, type StatusSnapshot } from "./statusDiff.js";
+import { diffWatchedStatuses, groupByResource, type StatusSnapshot } from "./statusDiff.js";
 
 // Same env resolution chain as the other entries.
 dotenv.config({ path: fileURLToPath(new URL("../../.env", import.meta.url)), quiet: true });
@@ -34,12 +34,13 @@ const pollOnce = async (): Promise<void> => {
       );
       snapshots.set(user.externalId, snapshot);
 
-      for (const change of changes) {
+      // One message per resource — a burst of action changes must not spam the DM.
+      for (const group of groupByResource(changes)) {
         console.error(
-          `Permission change for ${user.name}: ${change.action} on ${change.arn} ${change.oldStatus} -> ${change.newStatus}`,
+          `Permission changes for ${user.name}: ${group.changes.length} action(s) on ${group.arn}`,
         );
         await sendPermissionChangeAlert(user.slackUserId, user.name, {
-          ...change,
+          ...group,
           at: new Date(),
         });
       }

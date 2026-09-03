@@ -97,7 +97,7 @@ npx @modelcontextprotocol/inspector -e MCP_USER_EMAIL=admin@aura.com npx tsx mcp
 
 A standalone worker (`src/slack/worker.ts`) DMs users about their **watchlist only** — unwatched resources never trigger anything:
 
-- **Real-time alerts**: polls the Brain's verdicts (every `SLACK_ALERT_POLL_MS`, default 15s) and DMs on any watched action's ALLOWED ↔ DENIED transition, with the deny reason. Restarts seed silently — history is never replayed as alerts.
+- **Real-time alerts**: polls the Brain's verdicts (every `SLACK_ALERT_POLL_MS`, default 15s) and sends **one DM per changed resource**, listing every watched action that flipped (ALLOWED ↔ DENIED) with its deny reason — a burst of changes never spams the DM. Restarts seed silently — history is never replayed as alerts.
 - **Daily morning summary**: cron `SLACK_DAILY_CRON` (default `0 8 * * *`, server-local time) with total/allowed/denied-or-risky counts plus per-resource statuses.
 
 ```sh

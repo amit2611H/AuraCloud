@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diffWatchedStatuses, snapshotKey, type StatusSnapshot } from "./statusDiff.js";
+import { diffWatchedStatuses, groupByResource, snapshotKey, type StatusSnapshot } from "./statusDiff.js";
 
 const WATCHED = [
   { arn: "arn:aws:s3:::bucket-a", actions: ["s3:GetObject", "s3:PutObject"], name: "bucket-a" },
@@ -96,5 +96,32 @@ describe("diffWatchedStatuses", () => {
     const { changes, snapshot } = diffWatchedStatuses(previous, WATCHED, {});
     expect(changes).toEqual([]);
     expect(snapshot.size).toBe(0);
+  });
+});
+
+describe("groupByResource", () => {
+  const change = (arn: string, action: string, name?: string) => ({
+    arn,
+    ...(name ? { name } : {}),
+    action,
+    oldStatus: "valid" as const,
+    newStatus: "error" as const,
+    reason: null,
+  });
+
+  it("returns one group per resource, keeping all its action changes together", () => {
+    const groups = groupByResource([
+      change("arn:aws:s3:::a", "s3:GetObject", "a"),
+      change("arn:aws:s3:::b", "s3:GetObject", "b"),
+      change("arn:aws:s3:::b", "s3:PutObject", "b"),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toMatchObject({ arn: "arn:aws:s3:::a", name: "a" });
+    expect(groups[0].changes).toHaveLength(1);
+    expect(groups[1].changes.map((c) => c.action)).toEqual(["s3:GetObject", "s3:PutObject"]);
+  });
+
+  it("returns no groups for no changes", () => {
+    expect(groupByResource([])).toEqual([]);
   });
 });
