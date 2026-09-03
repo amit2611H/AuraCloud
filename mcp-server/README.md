@@ -92,3 +92,17 @@ For hand-crafted testing of individual tools:
 ```sh
 npx @modelcontextprotocol/inspector -e MCP_USER_EMAIL=admin@aura.com npx tsx mcp-server/src/index.ts
 ```
+
+## Slack notifications
+
+A standalone worker (`src/slack/worker.ts`) DMs users about their **watchlist only** — unwatched resources never trigger anything:
+
+- **Real-time alerts**: polls the Brain's verdicts (every `SLACK_ALERT_POLL_MS`, default 15s) and DMs on any watched action's ALLOWED ↔ DENIED transition, with the deny reason. Restarts seed silently — history is never replayed as alerts.
+- **Daily morning summary**: cron `SLACK_DAILY_CRON` (default `0 8 * * *`, server-local time) with total/allowed/denied-or-risky counts plus per-resource statuses.
+
+```sh
+npm run dev:slack -w mcp-server            # long-running worker (alerts + cron)
+npm run send-daily-summary -w mcp-server   # send the summary now, one-shot
+```
+
+Setup: `SLACK_BOT_TOKEN` in the shared `.env` (needs `chat:write`), and the recipient's Slack **user id** (`U…`, from profile → "Copy member ID" — not a `D…` DM-channel id) stored as `slackUserId` on their AWS `User` document. Slack failures are logged and swallowed — they never interrupt DB writes or tool execution.
