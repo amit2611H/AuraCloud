@@ -101,8 +101,20 @@ A standalone worker (`src/slack/worker.ts`) DMs users about their **watchlist on
 - **Daily morning summary**: cron `SLACK_DAILY_CRON` (default `0 8 * * *`, server-local time) with total/allowed/denied-or-risky counts plus per-resource statuses.
 
 ```sh
-npm run dev:slack -w mcp-server            # long-running worker (alerts + cron)
+npm run start:all                          # includes the worker (label: slack)
+npm run dev:slack -w mcp-server            # or the worker alone
 npm run send-daily-summary -w mcp-server   # send the summary now, one-shot
 ```
 
-Setup: `SLACK_BOT_TOKEN` in the shared `.env` (needs `chat:write`), and the recipient's Slack **user id** (`U…`, from profile → "Copy member ID" — not a `D…` DM-channel id) stored as `slackUserId` on their AWS `User` document. Slack failures are logged and swallowed — they never interrupt DB writes or tool execution.
+Setup — two things, per environment:
+
+1. `SLACK_BOT_TOKEN` in the shared `.env` (needs `chat:write`). The `.env` is **gitignored, so the token never arrives via git** — get it from a teammate over Slack/password manager. Without it the worker exits with a clear error and the rest of `start:all` is unaffected.
+2. The recipient's Slack **user id** (`U…`, from profile → "Copy member ID" — **not** a `D…` DM-channel id) stored as `slackUserId` on the AWS `User` document their account is linked to:
+
+```js
+db.users.updateOne({ externalId: "<linkedAwsUserId>" }, { $set: { slackUserId: "U..." } })
+```
+
+⚠️ **Run one worker at a time.** Workers poll the shared MongoDB — two people running `start:all` with the token means every DM arrives twice. Agree who plays "notifier".
+
+To see it work end-to-end: with the stack running, flip any permission on a **watched** resource in AWS → one grouped 🔔 DM per changed resource within ~30s (crawl + 10s Brain cycle + 15s poll); flip it back for the recovery DM. Changes made while the worker is down are never alerted retroactively (by design). Slack failures are logged and swallowed — they never interrupt DB writes or tool execution.
