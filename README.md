@@ -2,88 +2,287 @@
   <img src="./public/aura_big_logo.png" alt="Aura Cloud Logo" width="600" />
 </p>
 
-# Aura Cloud — Real-Time Cloud Diagnostics for Developers
+# Aura Cloud
 
-> [!NOTE]
-> This README is synchronized with the live [Aura Cloud Project Document](https://docs.google.com/document/d/1RvmlKEA2fjbNBSnmLm0fzoDHxs1AiyM9yhTY1u_po2s/edit?usp=sharing).
+### Cloud diagnostics for developers — with AI access through MCP
 
-Modern distributed development is fast, but cloud configuration is a minefield as it is usually a blind side for the non-devops RnD team members, AND modern AI tools like Cursor or Copilot. This persistent blind side makes it incredibly frustrating for developers to truly end-to-end debug their applications, creating a critical operational bottleneck.
+Aura Cloud is a cloud diagnostics platform designed to help developers determine whether an application failure originates in their code or in the underlying cloud environment.
 
-Aura Cloud is a real-time diagnostic dashboard for developer environment health. It continuously maps your permissions for the cloud, organization-level policies, and resource configurations to flag security and operational anomalies related to the cloud, to quickly distinguish between local code bugs and cloud errors. By flagging the anomalies and providing a clear reasoning for them, it drastically reduces debugging time and accelerates DevOps resolution. As a result, engineering teams can maintain a high development velocity without constantly getting derailed by infrastructure friction, effectively securing the dev-to-prod pipeline against configuration drift.
+The platform collects AWS configuration and permission data, evaluates infrastructure state, and exposes diagnostics through both a web dashboard and a Model Context Protocol (MCP) server.
 
----
-
-## 👥 User Story: Early Detection and Resolution of Environment Drift
-
-### The "Single Source of Truth" Strategy
-
-The developer utilizes the Aura Cloud live audit dashboard as a definitive, single source of truth for overall infrastructure health. By maintaining continuous visibility into environment configurations, the engineering team can immediately pinpoint hidden cloud infrastructure failures, preventing developers from wasting hours debugging perfectly fine local code.
-
-- **Morning Health Check (Starting the Day with Confidence):** The developer begins the workday by performing a quick 3-second sanity check on the dashboard. A clean, premium visual status displaying a 100% Health Score and 0 Active Blockers confirms that core environment components, organization-level policies, and permissions are perfectly up to date and functioning. This immediate green light ensures they are fully cleared to develop and deploy with complete confidence.
-- **Encountering an Elusive Bug (The Unknown Failure):** In the afternoon, the developer deploys a new feature. Suddenly, a core functionality breaks—the application hits a persistent timeout and fails silently. At this stage, the developer has no idea that an SQS queue permissions issue is the culprit; they only know that something is fundamentally broken. They initially suspect their recent local code changes, a faulty Docker container setup, or a broken local configuration.
-- **Instant Diagnosis (Exposing the Hidden SQS Problem):** Rather than losing hours down a rabbit hole of refactoring working code, adding print statements, and digging through chaotic application logs, the developer glances at the Aura Cloud dashboard to rule out the environment. Aura’s background crawlers have already caught the backend infrastructure anomaly in real-time. A red Blocked status card is flashing directly next to the transaction queue ARN, instantly pulling the hidden SQS problem out of the blind spot and exposing the exact root cause:
-  ```
-  Denied: No matching Allow statement found in identity policies for action sqs:SendMessage
-  ```
-- **Frictionless Collaboration & Targeted Escalation:** Armed with precise data, the developer bypasses the usual friction of opening a vague, unhelpful support ticket like _"Something is broken in staging, timeouts everywhere, please help."_ Instead, they initiate a highly targeted escalation by copying the exact diagnostic snippet and routing it directly to the DevOps administrator, pointing straight to the missing SQS IAM policies.
-- **Rapid Resolution:** DevOps receives the exact context they need and applies a precise fix in seconds. Aura’s crawlers immediately pick up the update, refresh the cache, and the dashboard returns to a healthy green. The environment resumes working instantly, turning an invisible infrastructure blind spot that normally derails half a day into a frictionless, five-minute resolution.
+Aura Cloud was developed as a B.Sc. Computer Science final project at The Academic College of Tel Aviv-Yaffo.
 
 ---
 
-## 🏗️ Component Architecture: Modular & Scalable
+## Project Status
 
-The platform was engineered from the ground up with system resilience and elastic scalability in mind. By decoupling the data collection crawlers, core logic evaluation pipeline, and API service, Aura ensures that a sudden surge in cloud infrastructure metadata never compromises the platform's analytical throughput, or that an internal error in the complex evaluation logic won’t create a noticeable downtime. This decoupled microservices architecture also allows individual components to scale or upgrade independently—resulting in a highly resilient system that matches the velocity of large-scale engineering teams.
+The academic project was completed in **September 2026**.
+
+The AWS environment originally used for development and demonstration is no longer intended to remain permanently hosted due to ongoing cloud infrastructure costs.
+
+As a result, this repository should primarily be viewed as the source code and technical documentation of the project. Running the complete system requires configuring your own AWS environment and the supporting services described below.
+
+The architecture, source code, screenshots, and MCP implementation remain available for technical review.
+
+---
+
+## The Problem
+
+Modern applications often depend on cloud permissions and infrastructure that are invisible to application developers.
+
+When an application suddenly fails to access an S3 bucket, publish to SQS, or perform another AWS operation, the failure may originate from:
+
+- application code
+- IAM permissions
+- organization-level policies
+- resource configuration
+- infrastructure changes
+
+Without visibility into the cloud layer, developers may spend significant time debugging application code when the actual problem is an infrastructure permission or configuration issue.
+
+Aura Cloud provides a centralized view of cloud state and permission diagnostics so developers can identify these failures earlier and escalate them with useful context.
+
+---
+
+## Architecture
+
+Aura Cloud uses a modular architecture that separates cloud data collection, permission evaluation, persistence, APIs, user interfaces, and AI integrations.
 
 <p align="center">
-  <img src="./public/aura_hld.jpg" alt="Aura Cloud Component Architecture" width="800" />
+  <img src="./public/aura_hld.jpg" alt="Aura Cloud Architecture" width="850" />
 </p>
 
-### 🔹 Crawlers
+### High-Level Data Flow
 
-The crawlers are the workers behind the data collection engine. They continuously read live state data directly from the environment and pull everything from organization-level Service Control Policies (SCPs) down to fine-grained resource security groups and inline IAM attachments. The crawlers write to Redis for fast read/write operations.
+```text
+                  AWS
+                   │
+                   ▼
+              Crawlers
+                   │
+                   ▼
+                 Redis
+                   │
+                   ▼
+          Permission / Logic
+             Evaluation
+                   │
+                   ▼
+                MongoDB
+               /       \
+              /         \
+             ▼           ▼
+        API Server    MCP Server
+             │           │
+             ▼           ▼
+        React UI     AI Clients
+```
 
-- **Scale & Isolation:** Each cloud service (S3, SQS, IAM, etc.) is monitored by an autonomous crawler task. These tasks are fully isolated and decoupled, allowing them to scale horizontally and to run at different frequencies depending on the service rate limit.
-- **Adaptive Rate-Limit Protection:** To protect production workloads, the crawlers use smart throttling algorithms. They automatically catch API rate limits (`ThrottlingException`), back off using an exponential jitter, and resume safely when the API clears to prevent account lockouts.
+### Main Components
 
-### 🔹 Logic Server
+**AWS Crawlers**
 
-"The Brain" runs the core analytical loops of the platform. It continuously reads target user watchlists from MongoDB, pulls the latest cached active policies from Redis, executes the evaluation loops, and writes the finalized health states back to MongoDB.
+Background workers collect configuration and permission information from AWS services and synchronize cloud state into Redis.
 
-- **Isolated & Resilient Process:** As the primary computational "heavy lifter" of the platform, this server is entirely decoupled from the ingestion and API layers. This isolation guarantees exceptional fault tolerance and elastic scalability, allowing the engine to scale horizontally or vertically to absorb performance jitter and sudden processing spikes without affecting the rest of the application.
-- **Deterministic Configuration Reducer (Boolean Policy Solver):** Rather than evaluating permissions on the fly via complex, multi-layered cloud API calls, the engine maps fragmented raw data into a deterministic boolean equation. It checks context keys, handles dynamic environment variables, region restrictions, and multi-tier rule structures to resolve access states.
+The crawler layer is designed to handle AWS API constraints such as throttling and different polling requirements between services.
+
+**Redis**
+
+Used as the fast-access storage layer for cloud configuration and permission data collected by the crawlers.
+
+Cloud permissions form interconnected relationships between users, groups, policies, resources, and actions. Redis provides an efficient representation for data that is read and updated frequently during evaluation.
+
+**Logic Server**
+
+Evaluates collected cloud configuration and permission data to determine the effective state of monitored resources and actions.
+
+The evaluation layer is separated from the crawlers and API so cloud ingestion, permission analysis, and client requests can evolve independently.
+
+**MongoDB**
+
+Stores persistent application state such as monitored resources, watchlists, user-related data, and evaluation results.
+
+**API Server**
+
+A Node.js / Express service exposing platform functionality to the web application and handling application-level authentication and data access.
+
+**Frontend**
+
+A React application that presents cloud health, monitored resources, permission states, and diagnostics to developers.
 
 ---
 
-## 💾 Data Storage Tier (Hybrid Persistence Strategy)
+## MCP Integration
 
-Aura Cloud utilizes a dual-storage architecture, intentionally matching specific database engines to distinct technical tasks. By isolating high-frequency, in-memory operations from long-term relational document states, the system maintains low performance latency while ensuring data durability.
+Aura Cloud includes a **Model Context Protocol (MCP) server** that exposes cloud diagnostics directly to AI clients.
 
-### 📈 Why Redis
+Instead of requiring an AI assistant to understand the internal storage model or manually inspect AWS configuration, the MCP server exposes structured tools that allow the client to query Aura Cloud.
 
-- **Sub-Millisecond Graph Traversal:** Cloud permissions represent complex, hierarchical relationships (e.g., _User -> Group -> Permission Set -> Policy_). Querying these structures on the fly using standard database joins can create performance bottlenecks.
-- **High-Throughput Caching:** Redis handles the fast-moving, high-frequency read/write operations. By using Redis Hashes and Sets, the background crawlers can dump deep JSON cloud configuration states extremely fast, allowing the Logic Engine to instantly fetch rules and solve permission equations.
+Example capabilities include:
 
-### 🍃 Why MongoDB
+- retrieving permission status for monitored resources
+- listing AWS resources
+- inspecting available actions for resources
+- reading and managing monitored resources
+- evaluating theoretical AWS permissions
 
-- **Flexible Document Schemas:** Cloud configuration outputs, identity metadata, and policy condition blocks vary wildly between different cloud resources. MongoDB’s schema-less BSON structure perfectly accommodates this highly polymorphic data without requiring complex database migrations.
+### Theoretical Permission Evaluation
+
+One of the MCP capabilities allows an AI client to ask whether a specific AWS action would be permitted for a resource even when that exact operation has not already been added to the user's watchlist.
+
+Conceptually:
+
+```text
+Developer / AI Client
+        │
+        │ "Can this identity perform
+        │  sqs:SendMessage on this queue?"
+        ▼
+    MCP Server
+        │
+        ▼
+ Permission Evaluation
+        │
+        ├── Redis → AWS permission/configuration state
+        │
+        └── MongoDB → application/context data
+        │
+        ▼
+ Structured Permission Result
+```
+
+This enables AI-assisted cloud debugging using the same infrastructure information available to Aura Cloud itself.
+
+### Why the MCP Server Accesses Redis and MongoDB
+
+The platform's API did not expose every piece of data required by the MCP tools.
+
+Routing all MCP functionality through the existing API would therefore have required substantially expanding the API solely to support the MCP layer.
+
+For relevant operations, the MCP server instead integrates directly with Redis and MongoDB.
+
+This keeps the MCP implementation focused on translating platform state into AI-accessible tools while avoiding an unnecessary intermediate API layer.
 
 ---
 
-## 🔌 API Server (The Integration Layer)
+## Example Scenario
 
-Built on Node.js and Express.js, the API server unifies the entire platform, bridging backend background computing and frontend presentation. By serving as the primary gateway, it handles incoming queries from the frontend, interfaces with the storage tiers, and translates complex background evaluation cycles into clean, structured data payloads for real-time diagnostics.
+Consider an application that attempts to publish a message to an AWS SQS queue.
 
-### Main Features
+The application fails even though the application logic itself is correct.
 
-- **60-Seconds Organization Onboarding:** Onboarding is completely automated via a dedicated CloudFormation template, treating infrastructure-as-code as the primary gateway into the platform. When initiated, the template programmatically deploys a highly restricted, read-only configuration tailored to Aura’s exact scanning specifications. This automation standardizes the setup pipeline across varying client scales, establishing a metadata-only access bridge back to Aura’s distributed crawlers without requiring manual cloud configuration.
-- **Identity-Aware Resource Scoping (JWT Session Management):** Security and data isolation are enforced at the API gateway through industry-standard JSON Web Token (JWT) verification. This guarantees that multi-tenant data lines are strictly maintained, ensuring developers are dynamically served only the real-time infrastructure metrics and environment states relevant to their specific clearance and scope.
+Aura Cloud's crawlers detect the relevant AWS permission state and the evaluation layer can identify that the operation is blocked, for example:
+
+```text
+sqs:SendMessage
+→ DENIED
+→ No matching Allow statement found in identity policies
+```
+
+Instead of treating the failure only as an application bug, the developer can immediately investigate the relevant AWS permission or provide the diagnostic information to the infrastructure team.
+
+The same information can also be queried through the MCP server by an AI development assistant.
 
 ---
 
-## 🎨 Frontend (Premium Developer UX)
-
-- **Modern SPA Stack:** Built on React, Vite, and Material UI (MUI). Using React Query for server-state sync, the UI updates live in the background. Status cards change states seamlessly without full-page refreshes.
+## Dashboard
 
 <p align="center">
-  <img src="./public/Screenshot%202026-05-30%20at%2020.26.58.png" alt="Aura Cloud Dashboard Screenshot" width="800" />
+  <img
+    src="./public/Screenshot%202026-05-30%20at%2020.26.58.png"
+    alt="Aura Cloud Dashboard"
+    width="850"
+  />
 </p>
+
+The dashboard provides a developer-oriented view of monitored cloud resources and their current diagnostic state.
+
+---
+
+## Tech Stack
+
+| Area | Technologies |
+|---|---|
+| Language | TypeScript |
+| Backend | Node.js, Express |
+| Frontend | React, Vite, Material UI, React Query |
+| Cloud | AWS |
+| Cloud Security | IAM, AWS permissions and policies |
+| Fast State / Cache | Redis |
+| Persistent Storage | MongoDB |
+| AI Integration | Model Context Protocol (MCP) |
+| Authentication | JWT / OAuth-based flows |
+| Testing | Vitest |
+
+---
+
+## Repository Structure
+
+```text
+AuraCloud/
+├── api-server/       # Application API
+├── crawlers/         # AWS configuration and permission collection
+├── logic/            # Permission and cloud-state evaluation
+├── mcp-server/       # MCP tools for AI clients
+├── src/              # Frontend application
+├── shared/           # Shared types and utilities
+├── public/           # Images and project assets
+└── README.md
+```
+
+The components are kept separate so collection, evaluation, API access, UI presentation, and AI integrations can be developed independently.
+
+---
+
+## My Contributions — Amit Reich
+
+As part of the team that developed Aura Cloud, my primary focus was the **AWS/cloud layer, system architecture, and MCP integration**.
+
+My contributions included:
+
+- **AWS & IAM:** Studied and implemented the AWS permission model used by the project, including IAM identities, policies, actions, and permission relationships required by the diagnostic engine.
+- **Architecture:** Participated extensively in designing the system architecture and the interaction between cloud crawlers, Redis, MongoDB, the evaluation layer, APIs, and MCP.
+- **Cloud Crawlers:** Implemented crawler-related logic, including synchronization of AWS user/identity information into Redis for downstream permission evaluation.
+- **MCP Server:** Contributed to the MCP implementation and added tools/routes for exposing cloud diagnostics to AI clients.
+- **Theoretical Permission Evaluation:** Implemented functionality that allows the MCP layer to evaluate hypothetical AWS resource/action permissions.
+- **MCP Data Integration:** Integrated the MCP server directly with Redis and MongoDB where the existing application API did not expose the data required by the MCP tools.
+
+The MCP server was developed collaboratively and evolved across multiple contributors. My work focused on the functionality and data integrations described above; the MCP authentication layer was implemented by other members of the team.
+
+---
+
+## Running the Project
+
+Aura Cloud consists of multiple services and requires external infrastructure to reproduce the complete environment.
+
+A full deployment requires, at minimum:
+
+- an AWS account configured for Aura Cloud's crawlers
+- AWS credentials and appropriate read permissions
+- Redis
+- MongoDB
+- Node.js
+- configuration/environment variables for the relevant services
+
+Individual components contain their own configuration and package definitions.
+
+> **Note:** The original AWS environment used during development of the academic project is not maintained as a permanent public deployment. You will need to provide your own AWS environment and credentials to run the complete system.
+
+---
+
+## Academic Project
+
+Aura Cloud was developed as a **B.Sc. Computer Science final project** at  
+**The Academic College of Tel Aviv-Yaffo (MTA)**.
+
+Project completed: **September 2026**.
+
+The project explored cloud observability, AWS permission analysis, distributed service architecture, and the use of MCP to make infrastructure diagnostics accessible to AI development tools.
+
+---
+
+## Disclaimer
+
+Aura Cloud is an academic engineering project and is not an actively hosted commercial cloud-monitoring service.
+
+The repository is maintained as a technical demonstration of the system's architecture and implementation.
